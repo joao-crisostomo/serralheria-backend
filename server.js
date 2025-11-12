@@ -3,32 +3,32 @@ const express = require("express");
 const cors = require("cors");
 const mercadopago = require("mercadopago");
 
+const { MercadoPagoConfig, Preference } = mercadopago; // ✅ novo SDK usa classes
+
 const app = express();
 
-// 🟢 Permitir CORS
 app.use(cors({
   origin: [
-    "https://serralheria-nine.vercel.app", // seu frontend hospedado na Vercel
-    "http://localhost:3000"                // para testes locais
+    "https://serralheria-nine.vercel.app",
+    "http://localhost:3000"
   ],
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-// 🟢 Permitir envio de JSON
 app.use(express.json());
 
-// 🟣 Configura Mercado Pago
-mercadopago.configure({
-  access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN
+// ⚙️ Configuração correta no novo SDK
+const client = new MercadoPagoConfig({
+  accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN,
 });
 
-// 🔵 Rota para criar preferência
+// 🟣 Rota para criar preferência
 app.post("/create-preference", async (req, res) => {
   try {
     const { planId, price, title } = req.body;
 
-    const preference = {
+    const body = {
       items: [
         {
           id: planId,
@@ -46,21 +46,21 @@ app.post("/create-preference", async (req, res) => {
       auto_return: "approved",
     };
 
-    // 🔹 Cria a preferência diretamente com o SDK oficial
-    const response = await mercadopago.preferences.create(preference);
+    // ✅ Cria preferência com o novo formato (SDK v2)
+    const preference = new Preference(client);
+    const result = await preference.create({ body });
 
-    console.log("Preferência criada com sucesso:", response.body.id);
-    res.json({ id: response.body.id });
+    console.log("Preferência criada com sucesso:", result.id);
+    res.json({ id: result.id });
   } catch (error) {
     console.error("Erro ao criar preferência:", error);
     res.status(500).json({
       error: "Falha ao criar preferência de pagamento.",
-      details: error.message
+      details: error.message,
     });
   }
 });
 
-// 🟢 Inicia o servidor
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
   console.log(`✅ Servidor rodando na porta ${port}`);
