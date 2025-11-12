@@ -7,14 +7,9 @@ const { MercadoPagoConfig, Preference } = mercadopago; // ✅ novo SDK usa class
 
 const app = express();
 
-app.use(cors({
-  origin: [
-    "https://serralheria-nine.vercel.app",
-    "http://localhost:3000"
-  ],
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+// ⚠️ Modo aberto apenas para teste
+app.use(cors());
+
 
 app.use(express.json());
 
