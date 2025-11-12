@@ -1,22 +1,19 @@
 // Importa as bibliotecas necessárias
 const express = require("express");
 const mercadopago = require("mercadopago");
-const cors = require("cors"); // Importa o CORS
+const cors = require("cors");
 
 // Cria a aplicação Express
 const app = express();
 
-// Habilita o CORS para permitir que seu frontend (de outro domínio) acesse este backend
-app.use(cors()); 
-
-// Habilita o Express para entender JSON no corpo das requisições
+// Habilita o CORS e o suporte a JSON
+app.use(cors());
 app.use(express.json());
 
-// Configura o SDK do Mercado Pago com sua chave secreta, lida do ambiente
-mercadopago.configure({
-  access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN,
+// Configura o SDK do Mercado Pago (novo formato)
+const client = new mercadopago.MercadoPagoConfig({
+  accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN,
 });
-
 
 // Define a rota principal para criar a preferência de pagamento
 app.post("/create-preference", async (req, res) => {
@@ -30,6 +27,7 @@ app.post("/create-preference", async (req, res) => {
           title: `Plano ${title} - Serralheria PRO`,
           quantity: 1,
           unit_price: Number(price),
+          currency_id: "BRL",
         },
       ],
       back_urls: {
@@ -40,10 +38,12 @@ app.post("/create-preference", async (req, res) => {
       auto_return: "approved",
     };
 
-    const response = await mercadopago.preferences.create(preference);
+    // Cria a preferência usando a nova API
+    const preferenceInstance = new mercadopago.Preference(client);
+    const response = await preferenceInstance.create({ body: preference });
 
-    console.log("Preferência criada com sucesso:", response.body.id);
-    res.json({ id: response.body.id });
+    console.log("Preferência criada com sucesso:", response.id);
+    res.json({ id: response.id });
 
   } catch (error) {
     console.error("Erro ao criar preferência:", error);
@@ -51,9 +51,7 @@ app.post("/create-preference", async (req, res) => {
   }
 });
 
-
-// Inicia o servidor para escutar por requisições
-// O Render usa a variável de ambiente PORT, então isso funciona perfeitamente.
+// Inicia o servidor (Render usa process.env.PORT)
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
   console.log(`Seu app está escutando na porta ${port}`);
