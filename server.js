@@ -9,9 +9,13 @@ const admin = require("firebase-admin");
 // 🔥 1. CONFIGURAÇÕES DO SERVIDOR
 // -------------------------------------
 const app = express();
-app.use(express.json());
 
-// CORS liberado para seu frontend na Vercel
+// Aceita JSON normalmente
+app.use(express.json({
+  limit: '5mb'
+}));
+
+// CORS liberado para seu frontend e localhost
 app.use(
   cors({
     origin: [
@@ -26,7 +30,15 @@ app.use(
 // -------------------------------------
 // 🔥 2. FIREBASE ADMIN (para ativar plano)
 // -------------------------------------
-const serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_KEY);
+let serviceAccount;
+
+try {
+  serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_KEY);
+} catch (err) {
+  console.error("❌ ERRO: Variável FIREBASE_ADMIN_KEY inválida.");
+  console.error("Use JSON em uma única linha com \\n.");
+  process.exit(1);
+}
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -54,7 +66,7 @@ async function activateUserPlan(userId) {
 // 🔥 3. MERCADO PAGO SDK v2
 // -------------------------------------
 const client = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN,
+  accessToken: process.env.MP_ACCESS_TOKEN,  // PRODUÇÃO ✔️
 });
 
 // -------------------------------------
@@ -65,8 +77,11 @@ app.post("/create-preference", async (req, res) => {
     const { planId, price, title, userId } = req.body;
 
     if (!userId) {
+      console.log("❌ userId não enviado");
       return res.status(400).json({ error: "userId é obrigatório" });
     }
+
+    console.log("Criando preferência para:", userId);
 
     const preference = {
       items: [
@@ -76,11 +91,16 @@ app.post("/create-preference", async (req, res) => {
           quantity: 1,
           unit_price: Number(price),
           currency_id: "BRL",
-          description: userId, // 🔥 O userId vai pelo Mercado Pago até o webhook
+          description: userId, // 🔥 Vai até o webhook
         },
       ],
       notification_url: "https://serralheria-backend.onrender.com/webhook",
       auto_return: "approved",
+      back_urls: {
+        success: "https://serralheria-nine.vercel.app/sucesso",
+        failure: "https://serralheria-nine.vercel.app/falha",
+        pending: "https://serralheria-nine.vercel.app/pendente"
+      }
     };
 
     const pref = new Preference(client);
@@ -90,7 +110,7 @@ app.post("/create-preference", async (req, res) => {
 
     res.json({ id: response.id });
   } catch (error) {
-    console.error("Erro ao criar preferência:", error);
+    console.error("❌ Erro ao criar preferência:", error);
     res.status(500).json({ error: "Erro ao criar preferência" });
   }
 });
@@ -100,21 +120,27 @@ app.post("/create-preference", async (req, res) => {
 // -------------------------------------
 app.post("/webhook", async (req, res) => {
   try {
+    console.log("📩 Webhook recebido:", req.body);
+
     const event = req.body;
 
-    console.log("📩 Webhook recebido:", JSON.stringify(event, null, 2));
+    if (event.type !== "payment") {
+      return res.sendStatus(200);
+    }
 
-    if (event.type === "payment") {
-      const paymentId = event.data.id;
+    const paymentId = event.data.id;
 
-      const paymentClient = new Payment(client);
-      const paymentData = await paymentClient.get({ id: paymentId });
+    const paymentClient = new Payment(client);
+    const paymentData = await paymentClient.get({ id: paymentId });
 
-      console.log("🔍 Dados do pagamento:", paymentData);
+    console.log("🔍 Dados do pagamento recebido:", paymentData);
 
-      if (paymentData.status === "approved") {
-        const userId = paymentData.additional_info.items[0].description;
+    if (paymentData.status === "approved") {
+      const userId = paymentData.additional_info?.items?.[0]?.description;
 
+      if (!userId) {
+        console.log("❌ userId não encontrado no pagamento");
+      } else {
         await activateUserPlan(userId);
       }
     }
@@ -127,7 +153,14 @@ app.post("/webhook", async (req, res) => {
 });
 
 // -------------------------------------
-// 🔥 6. Inicialização
+// 🔥 6. Rota padrão para testes
+// -------------------------------------
+app.get("/", (req, res) => {
+  res.send("Backend Serralheria PRO está online! ✔️");
+});
+
+// -------------------------------------
+// 🔥 7. Inicialização
 // -------------------------------------
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
