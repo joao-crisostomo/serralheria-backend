@@ -119,6 +119,52 @@ app.post("/create-preference", async (req, res) => {
   }
 });
 
+// =========================
+// 🔥 PROCESSAR PAGAMENTO
+// =========================
+app.post("/process-payment", async (req, res) => {
+  try {
+    const {
+      token,
+      issuer_id,
+      payment_method_id,
+      transaction_amount,
+      installments,
+      userId,
+    } = req.body;
+
+    const paymentClient = new Payment(client);
+
+    const response = await paymentClient.create({
+      body: {
+        token,
+        issuer_id,
+        payment_method_id,
+        transaction_amount,
+        installments,
+        payer: {
+          email: "test_user@test.com", // obrigatório
+          identification: {
+            type: "CPF",
+            number: "19119119100", // CPF de teste FIXO
+          },
+        },
+      },
+    });
+
+    console.log("Pagamento recebido:", response);
+
+    if (response.status === "approved") {
+      await activateUserPlan(userId);
+    }
+
+    res.json(response);
+  } catch (err) {
+    console.error("❌ Erro ao processar pagamento:", err);
+    res.status(500).json({ error: "Erro ao processar pagamento" });
+  }
+});
+
 // -------------------------------------
 // 🔥 5. WEBHOOK DO MERCADO PAGO
 // -------------------------------------
