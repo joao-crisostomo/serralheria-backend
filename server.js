@@ -11,24 +11,26 @@ const admin = require("firebase-admin");
 const app = express();
 
 // Aceita JSON normalmente
-app.use(express.json({
-  limit: '5mb'
-}));
-
-// CORS liberado para seu frontend e localhost
-app.use(
-  cors({
-    origin: [
-      "https://serralheria-nine.vercel.app",
-      "http://localhost:3000",
-    ],
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type"],
-  })
-);
+app.use(express.json({ limit: "5mb" }));
 
 // -------------------------------------
-// 🔥 2. FIREBASE ADMIN (para ativar plano)
+// 🔥 CORS DEFINITIVO — 100% COMPATÍVEL COM VERCEL + REACT + SERVICE WORKER
+// -------------------------------------
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  next();
+});
+
+// Corrige erro 405 em OPTIONS (pré-flight)
+app.options("*", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.sendStatus(200);
+});
+
+// -------------------------------------
+// 🔥 2. FIREBASE ADMIN
 // -------------------------------------
 let serviceAccount;
 
@@ -54,7 +56,7 @@ async function activateUserPlan(userId) {
     {
       plan: "pro",
       activated_at: new Date().toISOString(),
-      valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // +30 dias
+      valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     },
     { merge: true }
   );
@@ -66,11 +68,11 @@ async function activateUserPlan(userId) {
 // 🔥 3. MERCADO PAGO SDK v2
 // -------------------------------------
 const client = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN,  // PRODUÇÃO ✔️
+  accessToken: process.env.MP_ACCESS_TOKEN,
 });
 
 // -------------------------------------
-// 🔥 4. Rota para criar preferência
+// 🔥 4. ROTA PARA CRIAR PREFERÊNCIA
 // -------------------------------------
 app.post("/create-preference", async (req, res) => {
   try {
@@ -91,16 +93,18 @@ app.post("/create-preference", async (req, res) => {
           quantity: 1,
           unit_price: Number(price),
           currency_id: "BRL",
-          description: userId, // 🔥 Vai até o webhook
+          description: userId, // vai até o webhook
         },
       ],
-      notification_url: "https://serralheria-backend.onrender.com/webhook",
       auto_return: "approved",
+
       back_urls: {
         success: "https://serralheria-nine.vercel.app/sucesso",
         failure: "https://serralheria-nine.vercel.app/falha",
-        pending: "https://serralheria-nine.vercel.app/pendente"
-      }
+        pending: "https://serralheria-nine.vercel.app/pendente",
+      },
+
+      notification_url: "https://serralheria-backend.onrender.com/webhook",
     };
 
     const pref = new Preference(client);
@@ -116,7 +120,7 @@ app.post("/create-preference", async (req, res) => {
 });
 
 // -------------------------------------
-// 🔥 5. Webhook do Mercado Pago
+// 🔥 5. WEBHOOK DO MERCADO PAGO
 // -------------------------------------
 app.post("/webhook", async (req, res) => {
   try {
@@ -133,7 +137,7 @@ app.post("/webhook", async (req, res) => {
     const paymentClient = new Payment(client);
     const paymentData = await paymentClient.get({ id: paymentId });
 
-    console.log("🔍 Dados do pagamento recebido:", paymentData);
+    console.log("🔍 Dados do pagamento:", paymentData);
 
     if (paymentData.status === "approved") {
       const userId = paymentData.additional_info?.items?.[0]?.description;
@@ -153,7 +157,7 @@ app.post("/webhook", async (req, res) => {
 });
 
 // -------------------------------------
-// 🔥 6. Rota padrão para testes
+// 🔥 6. Rota padrão para teste
 // -------------------------------------
 app.get("/", (req, res) => {
   res.send("Backend Serralheria PRO está online! ✔️");
